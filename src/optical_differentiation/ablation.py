@@ -1,19 +1,25 @@
 import torch
-from optical_differentiation.train import evaluate
 import torch.nn as nn
-
-CHANNEL_NAMES = ["dx", "dy", "laplacian", "blur"]
+from optical_differentiation.train import evaluate
 
 
 def zero_channel_hook(channel_idx):
     def hook(module, input, output):
-        output = output.clone()         
+        output = output.clone()
         output[:, channel_idx, :, :] = 0
         return output
     return hook
 
 
-def ablate_channels(model, test_loader, device):
+def keep_only_channel_hook(channel_idx):
+    def hook(module, input, output):
+        mask = torch.zeros_like(output)
+        mask[:, channel_idx, :, :] = 1
+        return output * mask
+    return hook
+
+
+def ablate_channels(model, test_loader, device, channel_names: list[str]):
     criterion = nn.CrossEntropyLoss()
     model.eval()
 
@@ -22,10 +28,10 @@ def ablate_channels(model, test_loader, device):
 
     results = {"all_channels": base_acc}
 
-    for idx, name in enumerate(CHANNEL_NAMES):
+    for idx, name in enumerate(channel_names):
         handle = model.frontend.pool.register_forward_hook(zero_channel_hook(idx))
         _, acc = evaluate(model, test_loader, criterion, device)
-        handle.remove()  
+        handle.remove()
 
         drop = base_acc - acc
         results[name] = acc
@@ -33,19 +39,14 @@ def ablate_channels(model, test_loader, device):
 
     return results
 
-def keep_only_channel(model, test_loader, device):
+
+def keep_only_channel(model, test_loader, device, channel_names: list[str]):
     criterion = nn.CrossEntropyLoss()
     model.eval()
     results = {}
 
-    for keep_idx, name in enumerate(CHANNEL_NAMES):
-        def hook(module, input, output, keep_idx=keep_idx):
-            output = output.clone()
-            mask = torch.zeros_like(output)
-            mask[:, keep_idx, :, :] = 1
-            return output * mask
-
-        handle = model.frontend.pool.register_forward_hook(hook)
+    for idx, name in enumerate(channel_names):
+        handle = model.frontend.pool.register_forward_hook(keep_only_channel_hook(idx))
         _, acc = evaluate(model, test_loader, criterion, device)
         handle.remove()
 

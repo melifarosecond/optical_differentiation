@@ -4,18 +4,27 @@ import numpy as np
 import torch
 
 from optical_differentiation.data import get_dataloaders
-from optical_differentiation.models import LinearOnly, TwoLinear, Baseline, BaselineNew, BaselineNewSquare
-from optical_differentiation.optical import OpticalModel
+from optical_differentiation.models import LinearOnly, TwoLinear, ThreeLinear, ConvOneLayer, Baseline, BaselineNew, BaselineNewSquare
+from optical_differentiation.optical import OpticalModel, OpticalModelDiagonal, OpticalDiagonalOneLayer
 from optical_differentiation.train import run
-from optical_differentiation.tests import ablate_channels, keep_only_channel
+from optical_differentiation.ablation import ablate_channels, keep_only_channel
 
 MODELS = {
     "linear": LinearOnly,
     "two_linear": TwoLinear,
+    "three_linear": ThreeLinear,
+    "conv_one_layer": ConvOneLayer,
     "baseline_a": Baseline,
     "baseline_new": BaselineNew,
     "baseline_new_square": BaselineNewSquare,
     "optical": OpticalModel,
+    "optical_diagonal": OpticalModelDiagonal,
+    "optical_diagonal_one_layer": OpticalDiagonalOneLayer,
+}
+
+CHANNEL_NAMES = {
+    "optical": ["dx", "dy", "laplacian", "blur"],
+    "optical_diagonal": ["dx", "dy", "d45", "d135"],
 }
 
 
@@ -55,11 +64,12 @@ def main():
         log_dir=f"runs/{args.model}",
     )
 
-    if args.model == "optical" and args.ablate:
+    if args.model in CHANNEL_NAMES and args.ablate:
+        names = CHANNEL_NAMES[args.model]
         print("\n--- Ablation: обнуление одного канала ---")
-        ablate_channels(model, test_loader, device)
+        ablate_channels(model, test_loader, device, names)
         print("\n--- Ablation: оставлен только один канал ---")
-        keep_only_channel(model, test_loader, device)
+        keep_only_channel(model, test_loader, device, names)
 
 
 if __name__ == "__main__":
