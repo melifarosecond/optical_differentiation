@@ -3,12 +3,12 @@ import matplotlib.pyplot as plt
 
 from svetlanna import Wavefront
 from optical_differentiation.svetlanna_data import get_wavefront_datasets
-from optical_differentiation.svetlanna_model import OpticalSystem4F
+from optical_differentiation.svetlanna_model import SvetlannaOpticalFrontend
 
 
 def main():
     _, test_data = get_wavefront_datasets()
-    model = OpticalSystem4F() 
+    model = SvetlannaOpticalFrontend() 
     model.eval()
 
     n_examples = 4
@@ -25,7 +25,7 @@ def main():
         axes[0, i].axis("off")
 
         axes[1, i].imshow(out.intensity, cmap="hot")
-        axes[1, i].set_title("После 4f (d/dx)")
+        axes[1, i].set_title("После метаповерхности (d/dx)")
         axes[1, i].axis("off")
 
     plt.tight_layout()

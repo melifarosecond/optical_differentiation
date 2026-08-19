@@ -5,12 +5,10 @@ from torchvision.datasets import FashionMNIST
 import torchvision.transforms as transforms
 from svetlanna.transforms import ToWavefront
 
-WAVELENGTH = 630 * ureg.nm  
-
-Nx, Ny = 200, 200          
-GRID_SIZE = 8 * ureg.mm    
-
-FOCAL_LENGTH = 5 * ureg.cm  
+WAVELENGTH = 632 * ureg.nm
+Nx, Ny = 200, 200
+GRID_SIZE = 8 * ureg.mm
+FOCAL_LENGTH = 5 * ureg.cm
 
 SIM_PARAMS = sv.SimulationParameters(
     x=torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Nx),
@@ -20,7 +18,6 @@ SIM_PARAMS = sv.SimulationParameters(
 
 
 def get_wavefront_datasets(data_dir: str = "data"):
-   
     to_wavefront_transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize(size=(100, 100), interpolation=transforms.InterpolationMode.NEAREST),
@@ -33,43 +30,23 @@ def get_wavefront_datasets(data_dir: str = "data"):
     return train_data, test_data
 
 
-def create_segment_mask(x: int, y: int, d: int):
-    res = torch.zeros((Ny, Nx))
-    res[
-        (Ny - d) // 2 + y: (Ny + d) // 2 + y,
-        (Nx - d) // 2 + x: (Nx + d) // 2 + x,
-    ] = 1.0
-    return res
-
-
-def build_detector_masks():
-    d = 16
-
-    masks = torch.stack([
-        create_segment_mask(-int(2.7 * d), -int(2.7 * d), d),
-        create_segment_mask(0, -int(2.7 * d), d),
-        create_segment_mask(int(2.7 * d), -int(2.7 * d), d),
-        create_segment_mask(-int(3 * d), 0, d),
-        create_segment_mask(-int(1 * d), 0, d),
-        create_segment_mask(int(1 * d), 0, d),
-        create_segment_mask(int(3 * d), 0, d),
-        create_segment_mask(-int(2.7 * d), int(2.7 * d), d),
-        create_segment_mask(0, int(2.7 * d), d),
-        create_segment_mask(int(2.7 * d), int(2.7 * d), d),
-    ], dim=-1)
-    return masks
-
-
-def build_x_derivative_phase_mask():
+def build_x_derivative_phase_mask() -> torch.Tensor:
+    eps = 1e-3  # не даём значениям попасть точно на границу [0, 2*pi]
     x_axis = torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Nx)
     kx = (2 * torch.pi / (WAVELENGTH * FOCAL_LENGTH)) * x_axis
 
-    transfer_function = 1j * kx  
+    transfer_function = 1j * kx
     phase_mask_1d = torch.angle(transfer_function) % (2 * torch.pi)
+    phase_mask_1d = phase_mask_1d.clamp(eps, 2 * torch.pi - eps)
 
     phase_mask = phase_mask_1d.unsqueeze(0).expand(Ny, Nx).clone()
-
-    eps = 1e-3
-    phase_mask = phase_mask.clamp(eps, 2 * torch.pi - eps)
-
     return phase_mask
+
+
+def build_x_derivative_amplitude_mask() -> torch.Tensor:
+    x_axis = torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Nx)
+    kx = (2 * torch.pi / (WAVELENGTH * FOCAL_LENGTH)) * x_axis
+
+    amplitude_1d = kx.abs() / kx.abs().max()
+    amplitude = amplitude_1d.unsqueeze(0).expand(Ny, Nx).clone()
+    return amplitude

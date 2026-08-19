@@ -1,35 +1,36 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 import svetlanna as sv
 from svetlanna import Wavefront, LinearOpticalSetup
 
 from optical_differentiation.svetlanna_data import (
-    SIM_PARAMS, FOCAL_LENGTH, GRID_SIZE, Nx, Ny,
-    build_detector_masks, build_x_derivative_phase_mask,
+    SIM_PARAMS, FOCAL_LENGTH, GRID_SIZE,
+    build_x_derivative_phase_mask, build_x_derivative_amplitude_mask,
 )
 
 
-class OpticalSystem4F(nn.Module):
+class SvetlannaOpticalFrontend(nn.Module):
 
-    def __init__(self, slm_init_mask: torch.Tensor | None = None):
+    def __init__(self):
         super().__init__()
 
-        if slm_init_mask is None:
-            slm_init_mask = build_x_derivative_phase_mask()
+        phase_mask = build_x_derivative_phase_mask()
+        amplitude_mask = build_x_derivative_amplitude_mask()
 
         elements = [
-            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="ASM"),
+            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="zpASM"),
             sv.elements.ThinLens(SIM_PARAMS, focal_length=FOCAL_LENGTH),
-            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="ASM"),
+            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="zpASM"),
             sv.elements.SpatialLightModulator(
-                SIM_PARAMS,
-                mask=sv.ConstrainedParameter(slm_init_mask, min_value=0, max_value=2 * torch.pi),
-                height=GRID_SIZE,  
-                width=GRID_SIZE,
+                SIM_PARAMS, mask=phase_mask, height=GRID_SIZE, width=GRID_SIZE,
             ),
-            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="ASM"),
+            sv.elements.Aperture(
+                SIM_PARAMS, mask=amplitude_mask,
+            ),
+            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="zpASM"),
             sv.elements.ThinLens(SIM_PARAMS, focal_length=FOCAL_LENGTH),
-            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="ASM"),
+            sv.elements.FreeSpace(SIM_PARAMS, distance=FOCAL_LENGTH, method="zpASM"),
         ]
 
         self.setup = LinearOpticalSetup(elements)
@@ -38,17 +39,37 @@ class OpticalSystem4F(nn.Module):
         return self.setup(wavefront)
 
 
-class OpticalClassifier(nn.Module):
-    
-    def __init__(self, slm_init_mask: torch.Tensor | None = None):
+class SvetlannaOpticalFrontend14(nn.Module):
+
+    def __init__(self):
         super().__init__()
-        self.optical_core = OpticalSystem4F(slm_init_mask)
-        self.register_buffer("detector_masks", build_detector_masks())
+        self.core = SvetlannaOpticalFrontend()  
 
-    def forward(self, wavefront: Wavefront):
-        out_wavefront = self.optical_core(wavefront)
-        intensity = out_wavefront.intensity
+    def forward(self, wavefront: Wavefront) -> torch.Tensor:
+        out = self.core(wavefront)
+        intensity = out.intensity
 
-        I_l = (intensity[..., None] * self.detector_masks).sum(dim=(-2, -3))
-        I_l_norm = I_l / (torch.max(I_l, dim=-1, keepdim=True).values + 1e-8) * 10
-        return I_l_norm
+        if intensity.dim() == 3:
+            intensity = intensity.unsqueeze(1) 
+
+        return F.adaptive_avg_pool2d(intensity, output_size=(14, 14))  
+
+
+class SvetlannaOpticalModelEconomical(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.frontend = SvetlannaOpticalFrontend14()          
+        self.conv2 = nn.Conv2d(1, 16, kernel_size=5, padding=2) 
+        self.pool = nn.AvgPool2d(2)
+        self.fc1 = nn.Linear(16 * 7 * 7, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, wavefront: Wavefront) -> torch.Tensor:
+        x = self.frontend(wavefront)            
+        x = self.pool(F.relu(self.conv2(x)))   
+        x = x.flatten(1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)

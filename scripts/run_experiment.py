@@ -43,6 +43,10 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--ablate", action="store_true")
+    parser.add_argument("--optimizer", type=str, default="adam",
+        choices=["adam", "sgd", "sgd_momentum", "rmsprop"])
+    parser.add_argument("--scheduler", type=str, default="none",
+        choices=["none", "step", "cosine", "onecycle"])
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -52,18 +56,23 @@ def main():
     model = MODELS[args.model]()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}, model: {args.model}")
+    print(f"Device: {device}, model: {args.model}, "
+        f"optimizer: {args.optimizer}, scheduler: {args.scheduler}, "
+        f"batch_size: {args.batch_size}")
 
-    run(
+    run_name = f"{args.model}_{args.optimizer}_{args.scheduler}_bs{args.batch_size}"
+
+    model = run(
         model,
         train_loader,
         test_loader,
         epochs=args.epochs,
         lr=args.lr,
         device=device,
-        log_dir=f"runs/{args.model}",
+        log_dir=f"runs/{run_name}",
+        optimizer_name=args.optimizer,
+        scheduler_name=args.scheduler,
     )
-
     if args.model in CHANNEL_NAMES and args.ablate:
         names = CHANNEL_NAMES[args.model]
         print("\n--- Ablation: обнуление одного канала ---")
