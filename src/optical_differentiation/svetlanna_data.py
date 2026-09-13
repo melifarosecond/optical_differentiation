@@ -1,3 +1,4 @@
+import math
 import torch
 import svetlanna as sv
 from svetlanna.units import ureg
@@ -17,6 +18,9 @@ SIM_PARAMS = sv.SimulationParameters(
 )
 
 
+CHANNEL_DIRECTIONS = {"dx": 0.0, "dy": 90.0, "d45": 45.0, "d135": 135.0}
+
+
 def get_wavefront_datasets(data_dir: str = "data"):
     to_wavefront_transform = transforms.Compose([
         transforms.ToTensor(),
@@ -30,23 +34,72 @@ def get_wavefront_datasets(data_dir: str = "data"):
     return train_data, test_data
 
 
-def build_x_derivative_phase_mask() -> torch.Tensor:
-    eps = 1e-3  # не даём значениям попасть точно на границу [0, 2*pi]
+def build_directional_transfer_function(theta_deg: float) -> torch.Tensor:
     x_axis = torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Nx)
-    kx = (2 * torch.pi / (WAVELENGTH * FOCAL_LENGTH)) * x_axis
+    y_axis = torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Ny)
 
-    transfer_function = 1j * kx
-    phase_mask_1d = torch.angle(transfer_function) % (2 * torch.pi)
-    phase_mask_1d = phase_mask_1d.clamp(eps, 2 * torch.pi - eps)
+    k_scale = 2 * torch.pi / (WAVELENGTH * FOCAL_LENGTH)
+    kx = k_scale * x_axis  
+    ky = k_scale * y_axis  
 
-    phase_mask = phase_mask_1d.unsqueeze(0).expand(Ny, Nx).clone()
-    return phase_mask
+    kx_grid = kx.unsqueeze(0).expand(Ny, Nx)  
+    ky_grid = ky.unsqueeze(1).expand(Ny, Nx) 
+
+    theta = math.radians(theta_deg)
+    k_theta = kx_grid * math.cos(theta) + ky_grid * math.sin(theta)
+
+    transfer_function = (1j * k_theta).to(torch.complex64)
+    return transfer_function.clone()
+
+
+def build_ideal_normalized_transfer_function(theta_deg: float) -> torch.Tensor:
+    tf = build_directional_transfer_function(theta_deg)
+    return tf / tf.abs().max()
+
+
+def _grid_spacing_meters() -> float:
+    spacing_quantity = GRID_SIZE / Nx
+    try:
+        return float(spacing_quantity.to(ureg.m).magnitude)
+    except AttributeError:
+        return float(spacing_quantity) 
+
+
+def build_directional_fft_kernel(theta_deg: float) -> torch.Tensor:
+    dx_spacing = _grid_spacing_meters()
+    dy_spacing = dx_spacing 
+
+    kx = 2 * torch.pi * torch.fft.fftfreq(Nx, d=dx_spacing) 
+    ky = 2 * torch.pi * torch.fft.fftfreq(Ny, d=dy_spacing)
+
+    kx_grid = kx.unsqueeze(0).expand(Ny, Nx)
+    ky_grid = ky.unsqueeze(1).expand(Ny, Nx)
+
+    theta = math.radians(theta_deg)
+    k_theta = kx_grid * math.cos(theta) + ky_grid * math.sin(theta)
+
+    kernel = (1j * k_theta).to(torch.complex64)
+    kernel = kernel / kernel.abs().max()
+    return kernel.clone()
+
+
+def derive_phase_amplitude_masks(transfer_function: torch.Tensor, eps: float = 1e-3):
+    amplitude = transfer_function.abs()
+    amplitude = amplitude / amplitude.max()
+
+    phase = torch.angle(transfer_function) % (2 * torch.pi)
+    phase = phase.clamp(eps, 2 * torch.pi - eps)
+
+    return phase, amplitude
+
+
+def build_x_derivative_phase_mask() -> torch.Tensor:
+    tf = build_directional_transfer_function(CHANNEL_DIRECTIONS["dx"])
+    phase, _ = derive_phase_amplitude_masks(tf)
+    return phase
 
 
 def build_x_derivative_amplitude_mask() -> torch.Tensor:
-    x_axis = torch.linspace(-GRID_SIZE / 2, GRID_SIZE / 2, Nx)
-    kx = (2 * torch.pi / (WAVELENGTH * FOCAL_LENGTH)) * x_axis
-
-    amplitude_1d = kx.abs() / kx.abs().max()
-    amplitude = amplitude_1d.unsqueeze(0).expand(Ny, Nx).clone()
+    tf = build_directional_transfer_function(CHANNEL_DIRECTIONS["dx"])
+    _, amplitude = derive_phase_amplitude_masks(tf)
     return amplitude
