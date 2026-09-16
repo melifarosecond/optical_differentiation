@@ -1,33 +1,53 @@
+import argparse
 import torch
 from torch import nn
 
 from optical_differentiation.svetlanna_data import get_wavefront_datasets
-from optical_differentiation.svetlanna_model import SvetlannaOpticalModelEconomical
+from optical_differentiation.svetlanna_model import (
+    SvetlannaOpticalModelEconomical,
+    SvetlannaOpticalModelMultiChannel,
+)
 from optical_differentiation.svetlanna_train import train_loop, test_loop
+
+MODELS = {
+    "single": SvetlannaOpticalModelEconomical, 
+    "multi": SvetlannaOpticalModelMultiChannel,  
+}
+
+
+DEFAULT_BATCH_SIZE = {"single": 8, "multi": 2}
 
 
 def main():
-    batch_size = 8
-    epochs = 10
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=MODELS.keys(), default="single")
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=None,
+    )
+    parser.add_argument("--lr", type=float, default=1e-3)
+    args = parser.parse_args()
+
+    batch_size = args.batch_size or DEFAULT_BATCH_SIZE[args.model]
 
     train_data, test_data = get_wavefront_datasets()
 
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    test_dataloader = torch.utils.data.DataLoader(test_data, batch_size=128, shuffle=False)
+    test_dataloader = torch.utils.data.DataLoader(test_data, batch_size=max(batch_size, 32), shuffle=False)
 
-    model = SvetlannaOpticalModelEconomical()
+    model = MODELS[args.model]()
 
     trainable = [name for name, p in model.named_parameters() if p.requires_grad]
+    print(f"Модель: {args.model}, batch_size={batch_size}")
     print("Обучаемые параметры:", trainable)
 
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)
     loss_fn = nn.CrossEntropyLoss()
 
     print("\nДо обучения:")
     test_loop(test_dataloader, model, loss_fn)
 
-    for t in range(epochs):
-        print(f"\nEpoch {t + 1}\n-------------------------------")
+    for t in range(args.epochs):
+        print(f"\nEpoch {t + 1}/{args.epochs}\n-------------------------------")
         train_loop(train_dataloader, model, loss_fn, optimizer, batch_size)
         test_loop(test_dataloader, model, loss_fn)
 
