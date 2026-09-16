@@ -46,6 +46,8 @@ def main():
                     va="center", ha="center", fontsize=10)
 
     plt.tight_layout()
+    plt.savefig("svetlanna_comparison.png", dpi=150, bbox_inches="tight")
+    print("Сохранено в svetlanna_comparison.png")
     plt.show()
 
 

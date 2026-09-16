@@ -80,6 +80,8 @@ def main():
         fig.colorbar(im, ax=ax, fraction=0.046)
 
     plt.tight_layout()
+    plt.savefig("svetlanna_comparison.png", dpi=150, bbox_inches="tight")
+    print("Сохранено в svetlanna_comparison.png")
     plt.show()
 
 
