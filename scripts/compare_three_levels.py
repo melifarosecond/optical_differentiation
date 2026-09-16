@@ -2,7 +2,7 @@ import torch
 import matplotlib.pyplot as plt
 
 from svetlanna import Wavefront
-from optical_differentiation.svetlanna_data import get_wavefront_datasets
+from optical_differentiation.svetlanna_data import get_wavefront_datasets, DEVICE
 from optical_differentiation.svetlanna_model import (
     SvetlannaOpticalFrontend,
     IdealOpticalFrontend,
@@ -23,11 +23,12 @@ def compare(name_a, out_a, name_b, out_b):
 
 
 def main():
+    print(f"Device: {DEVICE}")
     _, test_data = get_wavefront_datasets()
 
-    physical = SvetlannaOpticalFrontend()  
-    ideal = IdealOpticalFrontend()         
-    fft_only = FFTOpticalFrontend()        
+    physical = SvetlannaOpticalFrontend().to(DEVICE)   # уровень 1: честная физика (SLM+Aperture)
+    ideal = IdealOpticalFrontend().to(DEVICE)           # уровень 2: 4f + идеальный элемент
+    fft_only = FFTOpticalFrontend().to(DEVICE)          # уровень 3: чистый FFT, без линз/FreeSpace
 
     physical.eval()
     ideal.eval()
@@ -39,10 +40,11 @@ def main():
 
     for i in range(n_examples):
         wavefront, _ = test_data[i]
+        wavefront = wavefront.to(DEVICE)
         with torch.no_grad():
-            out_physical = physical(Wavefront(wavefront)).intensity
-            out_ideal = ideal(Wavefront(wavefront)).intensity
-            out_fft = fft_only(Wavefront(wavefront)).intensity
+            out_physical = physical(Wavefront(wavefront)).intensity.cpu()
+            out_ideal = ideal(Wavefront(wavefront)).intensity.cpu()
+            out_fft = fft_only(Wavefront(wavefront)).intensity.cpu()
 
         d1 = (out_physical - out_ideal).abs()
         d2 = (out_ideal - out_fft).abs()
@@ -66,6 +68,7 @@ def main():
     print(f"3) Physical (SLM+Aperture) vs чистый FFT (суммарная цена реализации):")
     print(f"   среднее mean|ошибка| = {sum(stats['physical_vs_fft'])/n_examples:.3e}\n")
 
+    # Визуализация трёх карт ошибок для последнего примера
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     titles = [
         "Physical vs Ideal\n(цена фазы+амплитуды)",
@@ -80,9 +83,8 @@ def main():
         fig.colorbar(im, ax=ax, fraction=0.046)
 
     plt.tight_layout()
-    plt.savefig("svetlanna_comparison.png", dpi=150, bbox_inches="tight")
-    print("Сохранено в svetlanna_comparison.png")
-    plt.show()
+    plt.savefig("three_levels_diff.png", dpi=150, bbox_inches="tight")
+    print("Сохранено в three_levels_diff.png")
 
 
 if __name__ == "__main__":

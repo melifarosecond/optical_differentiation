@@ -1,19 +1,22 @@
-import torch 
+import torch
 import matplotlib.pyplot as plt
 
-from svetlanna import Wavefront 
-from optical_differentiation.svetlanna_data import get_wavefront_datasets 
-from optical_differentiation.svetlanna_model import ( 
-    SvetlannaOpticalFrontend, 
-    IdealOpticalFrontend, 
-    FFTOpticalFrontend, 
+from svetlanna import Wavefront
+from optical_differentiation.svetlanna_data import get_wavefront_datasets, DEVICE
+from optical_differentiation.svetlanna_model import (
+    SvetlannaOpticalFrontend,
+    IdealOpticalFrontend,
+    FFTOpticalFrontend,
 )
-def main(): 
+
+
+def main():
+    print(f"Device: {DEVICE}")
     _, test_data = get_wavefront_datasets()
 
-    physical = SvetlannaOpticalFrontend()
-    ideal = IdealOpticalFrontend()
-    fft_only = FFTOpticalFrontend()
+    physical = SvetlannaOpticalFrontend().to(DEVICE)
+    ideal = IdealOpticalFrontend().to(DEVICE)
+    fft_only = FFTOpticalFrontend().to(DEVICE)
     physical.eval()
     ideal.eval()
     fft_only.eval()
@@ -25,13 +28,14 @@ def main():
 
     for i in range(n_examples):
         wavefront, label = test_data[i]
+        wavefront = wavefront.to(DEVICE)
 
         with torch.no_grad():
-            out_physical = physical(Wavefront(wavefront)).intensity
-            out_ideal = ideal(Wavefront(wavefront)).intensity
-            out_fft = fft_only(Wavefront(wavefront)).intensity
+            out_physical = physical(Wavefront(wavefront)).intensity.cpu()
+            out_ideal = ideal(Wavefront(wavefront)).intensity.cpu()
+            out_fft = fft_only(Wavefront(wavefront)).intensity.cpu()
 
-        images = [wavefront.intensity, out_physical, out_ideal, out_fft]
+        images = [wavefront.cpu().intensity, out_physical, out_ideal, out_fft]
 
         for j, (img, title) in enumerate(zip(images, col_titles)):
             ax = axes[i, j]
@@ -40,16 +44,13 @@ def main():
             if i == 0:
                 ax.set_title(title, fontsize=11)
             if j == 0:
-                ax.text(-0.15, 0.5, 
-                        f"класс {label}", transform=ax.transAxes,
-                    rotation=90, 
-                    va="center", ha="center", fontsize=10)
+                ax.text(-0.15, 0.5, f"класс {label}", transform=ax.transAxes,
+                        rotation=90, va="center", ha="center", fontsize=10)
 
     plt.tight_layout()
     plt.savefig("svetlanna_comparison.png", dpi=150, bbox_inches="tight")
     print("Сохранено в svetlanna_comparison.png")
-    plt.show()
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()

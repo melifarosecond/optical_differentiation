@@ -2,11 +2,12 @@ import torch
 from svetlanna import Wavefront
 
 
-def train_loop(dataloader, model, loss_fn, optimizer, batch_size):
+def train_loop(dataloader, model, loss_fn, optimizer, batch_size, device):
     size = len(dataloader.dataset)
     model.train()
 
     for batch, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
         pred = model(Wavefront(X))
         loss = loss_fn(pred, y)
 
@@ -20,13 +21,14 @@ def train_loop(dataloader, model, loss_fn, optimizer, batch_size):
 
 
 @torch.no_grad()
-def test_loop(dataloader, model, loss_fn):
+def test_loop(dataloader, model, loss_fn, device):
     model.eval()
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     test_loss, correct = 0.0, 0
 
     for X, y in dataloader:
+        X, y = X.to(device), y.to(device)
         pred = model(Wavefront(X))
         test_loss += loss_fn(pred, y).item()
         correct += (pred.argmax(1) == y).float().sum().item()
