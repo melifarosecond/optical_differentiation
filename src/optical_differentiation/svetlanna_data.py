@@ -6,7 +6,7 @@ from torchvision.datasets import FashionMNIST
 import torchvision.transforms as transforms
 from svetlanna.transforms import ToWavefront
 WAVELENGTH = 632.8 * ureg.nm
-Nx, Ny = (2048, 2048)
+Nx, Ny = (512, 512)
 GRID_SIZE = 8 * ureg.mm
 FOCAL_LENGTH = 5 * ureg.cm
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
