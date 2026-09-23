@@ -6,4 +6,5 @@ __pycache__/
 .vscode/
 data/
 runs/
+cache/
 *.egg-info/

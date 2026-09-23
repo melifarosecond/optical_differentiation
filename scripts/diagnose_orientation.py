@@ -23,6 +23,8 @@ def main():
         'flip по вертикали (dim=-2)': lambda x: torch.flip(x, dims=[-2]),
         'flip по горизонтали (dim=-1)': lambda x: torch.flip(x, dims=[-1]),
         'flip по обеим осям (180°)': lambda x: torch.flip(x, dims=[-2, -1]),
+        'roll N/2': lambda x: torch.roll(x, (x.shape[-2] // 2, x.shape[-1] // 2), dims=(-2, -1)),
+        'flip + roll N/2': lambda x: torch.roll(torch.flip(x, [-2, -1]), (x.shape[-2] // 2, x.shape[-1] // 2), dims=(-2, -1)),
     }
 
     n_examples = 10
